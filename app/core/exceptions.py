@@ -41,3 +41,9 @@ class DocumentNotFoundException(AppException):
 class UploadFailedException(AppException):
     def __init__(self, message: str = "Failed to process and store the uploaded document.") -> None:
         super().__init__(message=message, error_code="UPLOAD_FAILED", status_code=500)
+
+
+class DocumentExtractionException(AppException):
+    def __init__(self, message: str = "Unable to extract text from the document.") -> None:
+        super().__init__(message=message, error_code="DOCUMENT_EXTRACTION_FAILED", status_code=400)
+

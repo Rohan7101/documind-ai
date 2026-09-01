@@ -76,6 +76,22 @@ def get_document(
     return DocumentResponse.model_validate(document)
 
 
+@router.post(
+    "/{document_id}/extract",
+    response_model=DocumentResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Extract text from document",
+    description="Extracts machine-readable text from the stored PDF using PyMuPDF and stores it in SQLite.",
+)
+def extract_document_text(
+    document_id: str,
+    service: DocumentService = Depends(get_document_service),
+) -> DocumentResponse:
+    """Trigger PDF text extraction for a document."""
+    document = service.extract_text(document_id)
+    return DocumentResponse.model_validate(document)
+
+
 @router.delete(
     "/{document_id}",
     response_model=DocumentDeleteResponse,
@@ -93,3 +109,4 @@ def delete_document(
         message="Document deleted successfully",
         id=document_id,
     )
+

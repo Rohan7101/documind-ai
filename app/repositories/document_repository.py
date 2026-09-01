@@ -47,3 +47,17 @@ class DocumentRepository:
         self.db.commit()
         self.db.refresh(document)
         return document
+
+    def update_extraction_result(
+        self,
+        document: Document,
+        extracted_text: Optional[str],
+        status: str,
+    ) -> Document:
+        """Update the document extracted text and processing status."""
+        document.extracted_text = extracted_text
+        document.status = status
+        self.db.commit()
+        self.db.refresh(document)
+        return document
+

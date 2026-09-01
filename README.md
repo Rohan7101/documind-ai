@@ -8,23 +8,31 @@ DocuMind AI is an intelligent document processing and question-answering platfor
 
 ## 📌 Project Status
 
-**Current Phase:** Phase 2 - Document Management Foundation
+**Current Phase:** Phase 3 - PDF Text Extraction Engine
 
-The document management foundation is implemented with secure file validation, local disk persistence, SQLite metadata storage, pagination, retrieval, and cascading deletion.
+The document ingestion and text extraction pipeline is implemented using PyMuPDF to extract, clean, and persist document text page-by-page in SQLite.
 
 ### ✅ Implemented Features:
-- **PDF File Upload & Validation:** Validates `.pdf` extension, MIME types, file size limits (`MAX_UPLOAD_SIZE_MB`), and `%PDF-` binary magic byte signatures.
-- **Safe & Collision-Resistant Storage:** Files are stored in `storage/documents/` using generated UUID filenames (`<uuid>.pdf`), completely isolating filesystem storage from unsafe client filenames.
-- **SQLite Document Metadata:** Persists document metadata (`id`, `original_filename`, `stored_filename`, `file_size`, `mime_type`, `status`, timestamps) using SQLAlchemy 2.x.
-- **Document Management Endpoints:** Full CRUD operations for uploading, paginating, inspecting, and deleting documents with transactional failure cleanup.
-- **Service Health Monitoring:** `GET /health` service status endpoint.
-- **Automated Testing:** Pytest suite with isolated test database and temporary storage fixtures.
+- **PDF Upload & Validation:** Enforces `.pdf` extension, MIME validation, file size limits (`MAX_UPLOAD_SIZE_MB`), and `%PDF-` binary signature check.
+- **Safe & Collision-Resistant Storage:** Portable relative storage paths (`storage/documents/<uuid>.pdf`) with physical resolution from configured `STORAGE_DIR`.
+- **SQLite Document Persistence:** Database records for document metadata and extracted text using SQLAlchemy 2.x.
+- **Page-by-Page PDF Text Extraction:** Dedicated `PDFExtractionService` powered by PyMuPDF extracting text strictly in document page order.
+- **Text Cleaning & Normalization:** Normalizes non-breaking spaces, zero-width characters, line breaks, and whitespace while preserving Unicode and multi-language content.
+- **Status Lifecycle Management:** Tracks document state through `uploaded` ➔ `processing` ➔ `processed` (or `failed` on corrupted files).
+- **Graceful Edge Case Handling:**
+  - *Image-only / scanned PDFs:* Marked as `processed` with `extracted_text = null` (no false claims of OCR).
+  - *Corrupted PDFs:* Returns structured `DOCUMENT_EXTRACTION_FAILED` error (HTTP 400) and marks status `failed`.
+  - *Deterministic Re-extraction:* Safe re-extraction without data corruption.
+- **Service Health Monitoring:** `GET /health` service endpoint.
+- **Automated Test Suite:** 23 pytest test cases covering foundation, upload security, and extraction behaviors.
 
 ### ⏳ Planned (Future Milestones):
-- **Document Parsing & Text Extraction:** PyMuPDF integration.
-- **OCR Engine:** Tesseract OCR for scanned documents/images.
+- **OCR Engine:** Tesseract OCR for scanned / image-only documents.
 - **AI / LLM Integration:** Embeddings, vector indexing, document summarization, and interactive Q&A.
 - **Frontend:** Modern Web UI (HTML/CSS/JavaScript).
+
+> [!NOTE]
+> **Important:** OCR (Optical Character Recognition) and AI/LLM summarization/Q&A are not implemented in Phase 3 and are planned for subsequent milestones.
 
 ---
 
@@ -33,6 +41,7 @@ The document management foundation is implemented with secure file validation, l
 - **Language:** Python 3.12+ (tested with Python 3.13)
 - **Framework:** [FastAPI](https://fastapi.tiangolo.com/)
 - **ASGI Server:** [Uvicorn](https://www.uvicorn.org/)
+- **PDF Engine:** [PyMuPDF](https://pymupdf.readthedocs.io/)
 - **ORM / Database:** [SQLAlchemy 2.x](https://www.sqlalchemy.org/) with SQLite
 - **Validation & Settings:** [Pydantic v2](https://docs.pydantic.dev/) & [pydantic-settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/)
 - **Testing:** [pytest](https://docs.pytest.org/) & [HTTPX](https://www.python-httpx.org/)
@@ -53,7 +62,7 @@ documind-ai/
 │   │   └── routes/
 │   │       ├── __init__.py      # Router aggregator
 │   │       ├── health.py        # Health check endpoint (/health)
-│   │       └── documents.py     # Document management endpoints (/api/documents)
+│   │       └── documents.py     # Document & extraction endpoints (/api/documents)
 │   │
 │   ├── core/                    # Core configuration and infrastructure
 │   │   ├── __init__.py
@@ -72,7 +81,8 @@ documind-ai/
 │   │
 │   ├── services/                # Business logic layer
 │   │   ├── __init__.py
-│   │   └── document_service.py  # Document upload, storage & lifecycle logic
+│   │   ├── document_service.py  # Document upload, storage & lifecycle logic
+│   │   └── pdf_extraction_service.py # PyMuPDF text extraction engine
 │   │
 │   └── repositories/            # Data access layer
 │       ├── __init__.py
@@ -82,7 +92,8 @@ documind-ai/
 │   ├── __init__.py
 │   ├── conftest.py              # Pytest fixtures for isolated db & storage
 │   ├── test_health.py           # Health check endpoint tests
-│   └── test_documents.py        # Document upload, validation & management tests
+│   ├── test_documents.py        # Document upload, validation & management tests
+│   └── test_pdf_extraction.py   # PDF text extraction & edge cases tests
 │
 ├── storage/                     # Storage for document files
 │   ├── .gitkeep
@@ -97,7 +108,7 @@ documind-ai/
 │
 ├── .env.example                 # Example environment variables template
 ├── .gitignore                   # Git ignore patterns
-├── requirements.txt             # Python dependencies
+├── requirements.txt             # Python dependencies (includes PyMuPDF)
 ├── README.md                    # Project documentation
 └── LICENSE                      # MIT License
 ```
@@ -111,9 +122,24 @@ documind-ai/
 | `GET` | `/health` | Service health status | `200 OK` |
 | `POST` | `/api/documents/upload` | Upload & validate a PDF file | `201 Created` |
 | `GET` | `/api/documents` | List uploaded documents with pagination (`?skip=0&limit=20`) | `200 OK` |
-| `GET` | `/api/documents/{document_id}` | Retrieve document metadata by ID | `200 OK` |
+| `GET` | `/api/documents/{document_id}` | Retrieve document metadata & extracted text | `200 OK` |
+| `POST` | `/api/documents/{document_id}/extract` | Trigger PDF text extraction via PyMuPDF | `200 OK` |
 | `DELETE` | `/api/documents/{document_id}` | Delete document record and stored file | `200 OK` |
 | `GET` | `/docs` | Interactive Swagger API documentation | `200 OK` |
+
+---
+
+## 🔄 Document Status Lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> uploaded : File Upload Validated & Saved
+    uploaded --> processing : POST /api/documents/{id}/extract
+    processing --> processed : Extraction Succeeded (Text Saved)
+    processing --> failed : Extraction Failed / Corrupted PDF
+    processed --> processing : Re-extraction Triggered
+    failed --> processing : Retry Extraction
+```
 
 ---
 
@@ -168,7 +194,7 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 ### 6. Run Automated Tests
 
-Execute the test suite using `pytest`:
+Execute the full test suite using `pytest`:
 
 ```bash
 pytest -v

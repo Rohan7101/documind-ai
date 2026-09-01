@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.exceptions import (
+    DocumentExtractionException,
     DocumentNotFoundException,
     FileTooLargeException,
     InvalidFileTypeException,
@@ -14,16 +15,22 @@ from app.core.exceptions import (
 from app.core.logging import logger
 from app.models.document import Document
 from app.repositories.document_repository import DocumentRepository
+from app.services.pdf_extraction_service import PDFExtractionService
 
 PDF_MAGIC_BYTES = b"%PDF-"
 
 
 class DocumentService:
-    """Service orchestrating document validation, storage, and database persistence."""
+    """Service orchestrating document validation, storage, extraction, and database persistence."""
 
-    def __init__(self, db: Session) -> None:
+    def __init__(
+        self,
+        db: Session,
+        extraction_service: Optional[PDFExtractionService] = None,
+    ) -> None:
         self.db = db
         self.repository = DocumentRepository(db)
+        self.extraction_service = extraction_service or PDFExtractionService()
 
     def validate_file(self, filename: Optional[str], content: bytes) -> None:
         """Validate filename extension, file size, and magic bytes signature."""
@@ -120,4 +127,31 @@ class DocumentService:
         # Delete database record
         self.repository.delete(document)
         logger.info(f"Deleted document record: id={document_id}")
+
+    def extract_text(self, document_id: str) -> Document:
+        """Extract text from a stored PDF, transition status through processing -> processed, and persist text."""
+        document = self.get_document(document_id)
+
+        # Transition status to processing
+        self.repository.update_status(document, "processing")
+        logger.info(f"Document id={document_id} status updated to 'processing'")
+
+        file_path = self.resolve_file_path(document)
+
+        try:
+            extracted_text = self.extraction_service.extract_text_from_file(file_path)
+            updated_doc = self.repository.update_extraction_result(
+                document=document,
+                extracted_text=extracted_text,
+                status="processed",
+            )
+            logger.info(f"Text extraction completed for document id={document_id}, status='processed'")
+            return updated_doc
+        except Exception as err:
+            logger.error(f"Text extraction failed for document id={document_id}: {err}", exc_info=True)
+            self.repository.update_status(document, "failed")
+            if isinstance(err, DocumentExtractionException):
+                raise err
+            raise DocumentExtractionException("Unable to extract text from the document.")
+
 

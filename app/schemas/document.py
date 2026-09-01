@@ -1,5 +1,7 @@
 from datetime import datetime
+from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field
+
 
 
 class DocumentResponse(BaseModel):
@@ -11,10 +13,13 @@ class DocumentResponse(BaseModel):
     mime_type: str = Field(..., description="MIME type of the file")
     file_size: int = Field(..., description="Size of the file in bytes")
     status: str = Field(..., description="Current processing status of the document")
+    extracted_text: Optional[str] = Field(None, description="Extracted text content from the document")
+    summary: Optional[str] = Field(None, description="Generated document summary if available")
     created_at: datetime = Field(..., description="Timestamp when the document was uploaded")
     updated_at: datetime = Field(..., description="Timestamp when the document was last updated")
 
     model_config = ConfigDict(from_attributes=True)
+
 
 
 class DocumentListResponse(BaseModel):
