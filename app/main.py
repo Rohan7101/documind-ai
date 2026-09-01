@@ -7,6 +7,8 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.routes import api_router
 from app.core.config import settings
+from app.core.database import init_db
+from app.core.exceptions import AppException
 from app.core.logging import setup_logging, logger
 
 
@@ -15,6 +17,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan manager for startup and shutdown events."""
     setup_logging()
     logger.info(f"Starting {settings.APP_NAME} in [{settings.APP_ENV}] environment")
+    init_db()
+    logger.info("Database initialized successfully")
     yield
     logger.info(f"Shutting down {settings.APP_NAME}")
 
@@ -31,6 +35,22 @@ app.include_router(api_router)
 
 
 # Global Exception Handlers for consistent API error responses
+@app.exception_handler(AppException)
+async def app_exception_handler(request: Request, exc: AppException) -> JSONResponse:
+    content = {
+        "error": {
+            "code": exc.error_code,
+            "message": exc.message,
+        }
+    }
+    if exc.details is not None:
+        content["error"]["details"] = exc.details
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=content,
+    )
+
+
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
     return JSONResponse(
@@ -70,3 +90,4 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
             }
         },
     )
+

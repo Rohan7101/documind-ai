@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"
     DATABASE_URL: str = "sqlite:///./data/documind.db"
     LOG_LEVEL: str = "INFO"
+    MAX_UPLOAD_SIZE_MB: int = 10
+    STORAGE_DIR: str = "storage/documents"
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -17,3 +19,4 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+

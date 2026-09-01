@@ -32,9 +32,13 @@ htmlcov/
 *.sqlite
 *.sqlite3
 
-# Uploaded documents / storage directory (keep folder tracked via .gitkeep)
+# Uploaded documents / storage directory (keep folder structure tracked via .gitkeep)
 storage/*
 !storage/.gitkeep
+!storage/documents/
+storage/documents/*
+!storage/documents/.gitkeep
+
 
 # Local data directory (keep folder tracked via .gitkeep)
 data/*

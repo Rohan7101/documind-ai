@@ -8,27 +8,34 @@ DocuMind AI is an intelligent document processing and question-answering platfor
 
 ## 📌 Project Status
 
-**Current Phase:** Foundation / Development (Milestone 1)
+**Current Phase:** Phase 2 - Document Management Foundation
 
-The project foundation is initialized with core configuration, database connection scaffolding, logging, structured error handling, health monitoring, and test suites. Advanced document processing, OCR, AI integration, and user interfaces are planned for subsequent milestones.
+The document management foundation is implemented with secure file validation, local disk persistence, SQLite metadata storage, pagination, retrieval, and cascading deletion.
+
+### ✅ Implemented Features:
+- **PDF File Upload & Validation:** Validates `.pdf` extension, MIME types, file size limits (`MAX_UPLOAD_SIZE_MB`), and `%PDF-` binary magic byte signatures.
+- **Safe & Collision-Resistant Storage:** Files are stored in `storage/documents/` using generated UUID filenames (`<uuid>.pdf`), completely isolating filesystem storage from unsafe client filenames.
+- **SQLite Document Metadata:** Persists document metadata (`id`, `original_filename`, `stored_filename`, `file_size`, `mime_type`, `status`, timestamps) using SQLAlchemy 2.x.
+- **Document Management Endpoints:** Full CRUD operations for uploading, paginating, inspecting, and deleting documents with transactional failure cleanup.
+- **Service Health Monitoring:** `GET /health` service status endpoint.
+- **Automated Testing:** Pytest suite with isolated test database and temporary storage fixtures.
+
+### ⏳ Planned (Future Milestones):
+- **Document Parsing & Text Extraction:** PyMuPDF integration.
+- **OCR Engine:** Tesseract OCR for scanned documents/images.
+- **AI / LLM Integration:** Embeddings, vector indexing, document summarization, and interactive Q&A.
+- **Frontend:** Modern Web UI (HTML/CSS/JavaScript).
 
 ---
 
-## 🛠️ Planned Technology Stack
+## 🛠️ Technology Stack
 
-### Current Foundation:
 - **Language:** Python 3.12+ (tested with Python 3.13)
 - **Framework:** [FastAPI](https://fastapi.tiangolo.com/)
 - **ASGI Server:** [Uvicorn](https://www.uvicorn.org/)
 - **ORM / Database:** [SQLAlchemy 2.x](https://www.sqlalchemy.org/) with SQLite
 - **Validation & Settings:** [Pydantic v2](https://docs.pydantic.dev/) & [pydantic-settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/)
 - **Testing:** [pytest](https://docs.pytest.org/) & [HTTPX](https://www.python-httpx.org/)
-
-### Planned (Future Milestones):
-- **Document Ingestion & Parsing:** PyMuPDF
-- **OCR Engine:** Tesseract OCR
-- **Intelligence:** LLM API / Retrieval-Augmented Generation (RAG)
-- **Frontend:** Modern Web UI (HTML/CSS/JavaScript)
 
 ---
 
@@ -39,38 +46,48 @@ documind-ai/
 │
 ├── app/
 │   ├── __init__.py
-│   ├── main.py                  # FastAPI application entrypoint
+│   ├── main.py                  # FastAPI application entrypoint & exception handlers
 │   │
 │   ├── api/                     # API routing and endpoint handlers
 │   │   ├── __init__.py
 │   │   └── routes/
-│   │       ├── __init__.py
-│   │       └── health.py        # Health check endpoint (/health)
+│   │       ├── __init__.py      # Router aggregator
+│   │       ├── health.py        # Health check endpoint (/health)
+│   │       └── documents.py     # Document management endpoints (/api/documents)
 │   │
 │   ├── core/                    # Core configuration and infrastructure
 │   │   ├── __init__.py
 │   │   ├── config.py            # Pydantic Settings & environment config
-│   │   ├── database.py          # SQLAlchemy engine & session dependency
+│   │   ├── database.py          # SQLAlchemy engine, session & init_db
+│   │   ├── exceptions.py        # Centralized application exception classes
 │   │   └── logging.py           # Standard centralized logging
 │   │
 │   ├── models/                  # SQLAlchemy ORM models
-│   │   └── __init__.py
+│   │   ├── __init__.py
+│   │   └── document.py          # Document database model
 │   │
 │   ├── schemas/                 # Pydantic validation schemas
-│   │   └── __init__.py
+│   │   ├── __init__.py
+│   │   └── document.py          # Document response schemas
 │   │
 │   ├── services/                # Business logic layer
-│   │   └── __init__.py
+│   │   ├── __init__.py
+│   │   └── document_service.py  # Document upload, storage & lifecycle logic
 │   │
 │   └── repositories/            # Data access layer
-│       └── __init__.py
+│       ├── __init__.py
+│       └── document_repository.py # Document CRUD operations
 │
 ├── tests/                       # Automated test suite
 │   ├── __init__.py
-│   └── test_health.py           # Health check endpoint tests
+│   ├── conftest.py              # Pytest fixtures for isolated db & storage
+│   ├── test_health.py           # Health check endpoint tests
+│   └── test_documents.py        # Document upload, validation & management tests
 │
-├── storage/                     # Storage for document files (.gitkeep)
-│   └── .gitkeep
+├── storage/                     # Storage for document files
+│   ├── .gitkeep
+│   └── documents/               # Stored uploaded PDF files
+│       └── .gitkeep
 │
 ├── data/                        # Local SQLite database directory (.gitkeep)
 │   └── .gitkeep
@@ -84,6 +101,19 @@ documind-ai/
 ├── README.md                    # Project documentation
 └── LICENSE                      # MIT License
 ```
+
+---
+
+## 🔌 API Endpoints
+
+| Method | Endpoint | Description | Status Code |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/health` | Service health status | `200 OK` |
+| `POST` | `/api/documents/upload` | Upload & validate a PDF file | `201 Created` |
+| `GET` | `/api/documents` | List uploaded documents with pagination (`?skip=0&limit=20`) | `200 OK` |
+| `GET` | `/api/documents/{document_id}` | Retrieve document metadata by ID | `200 OK` |
+| `DELETE` | `/api/documents/{document_id}` | Delete document record and stored file | `200 OK` |
+| `GET` | `/docs` | Interactive Swagger API documentation | `200 OK` |
 
 ---
 
@@ -101,12 +131,6 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 ```
 
-**Windows (cmd):**
-```cmd
-python -m venv .venv
-.\.venv\Scripts\activate.bat
-```
-
 **Linux / macOS:**
 ```bash
 python3 -m venv .venv
@@ -116,13 +140,12 @@ source .venv/bin/activate
 ### 3. Install Dependencies
 
 ```bash
-pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
 ### 4. Configure Environment
 
-Copy the `.env.example` template to create your local `.env` file:
+Copy the `.env.example` template:
 
 ```bash
 # Windows
@@ -140,9 +163,7 @@ Start the local development server with Uvicorn:
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-- API Base URL: `http://127.0.0.1:8000`
 - Interactive API Docs (Swagger UI): `http://127.0.0.1:8000/docs`
-- Alternative API Docs (ReDoc): `http://127.0.0.1:8000/redoc`
 - Health Check: `http://127.0.0.1:8000/health`
 
 ### 6. Run Automated Tests
@@ -150,16 +171,16 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 Execute the test suite using `pytest`:
 
 ```bash
-pytest
+pytest -v
 ```
 
 ---
 
 ## 🔒 Security Note
 
-- **Never commit `.env` files or API secrets** to version control.
-- All sensitive credentials and local database files (`*.db`, `*.sqlite`) are ignored by `.gitignore`.
-- Only commit safe template configuration files like `.env.example`.
+- **Path Traversal Protection:** Uploaded files are stored with unique UUID filenames and never use client-provided filenames on the local filesystem.
+- **Magic Bytes Validation:** Uploaded PDFs are validated for the `%PDF-` signature to prevent executable or script files masquerading as PDFs.
+- **Zero Secrets in Git:** Sensitive credentials and local databases (`*.db`, `*.sqlite`) are ignored by `.gitignore`.
 
 ---
 

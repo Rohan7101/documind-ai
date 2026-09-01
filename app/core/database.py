@@ -35,6 +35,12 @@ class Base(DeclarativeBase):
     pass
 
 
+def init_db() -> None:
+    """Initialize database tables."""
+    import app.models  # noqa: F401 - ensure models are imported before creating tables
+    Base.metadata.create_all(bind=engine)
+
+
 def get_db() -> Generator[Session, None, None]:
     """FastAPI dependency that provides a database session per request."""
     db = SessionLocal()
@@ -42,3 +48,4 @@ def get_db() -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
+
