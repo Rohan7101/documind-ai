@@ -56,10 +56,31 @@ def test_database_record_creation(client: TestClient, db_session: Session) -> No
     db_doc = db_session.get(Document, doc_id)
     assert db_doc is not None
     assert db_doc.original_filename == "contract_v1.pdf"
+    assert db_doc.file_path == f"storage/documents/{db_doc.stored_filename}"
     assert db_doc.status == "uploaded"
     assert db_doc.file_size == len(SAMPLE_VALID_PDF_BYTES)
     assert db_doc.extracted_text is None
     assert db_doc.summary is None
+
+
+def test_database_stores_relative_portable_file_path(client: TestClient, db_session: Session) -> None:
+    """Verify the database stores a relative, portable path instead of an absolute machine path."""
+    files = {
+        "file": ("portable_doc.pdf", io.BytesIO(SAMPLE_VALID_PDF_BYTES), "application/pdf")
+    }
+    response = client.post("/api/documents/upload", files=files)
+    assert response.status_code == 201
+    doc_id = response.json()["id"]
+
+    db_doc = db_session.get(Document, doc_id)
+    assert db_doc is not None
+
+    # Must be a relative path and must not contain machine-specific drive letters or root prefixes
+    assert not Path(db_doc.file_path).is_absolute()
+    assert not db_doc.file_path.startswith(("\\", "/", "C:", "D:"))
+    assert db_doc.file_path.startswith("storage/documents/")
+    assert db_doc.file_path == f"storage/documents/{db_doc.stored_filename}"
+
 
 
 def test_non_pdf_extension_rejected(client: TestClient) -> None:

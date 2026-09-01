@@ -39,6 +39,11 @@ class DocumentService:
         if not content.startswith(PDF_MAGIC_BYTES):
             raise InvalidPDFException("The uploaded file does not contain a valid PDF signature.")
 
+    @staticmethod
+    def resolve_file_path(document: Document) -> Path:
+        """Resolve the absolute physical filesystem path for a document from the configured STORAGE_DIR."""
+        return Path(settings.STORAGE_DIR) / document.stored_filename
+
     def upload_document(self, filename: str, content: bytes, mime_type: Optional[str] = None) -> Document:
         """Validate, store securely on disk, and save document record in SQLite."""
         self.validate_file(filename=filename, content=content)
@@ -50,7 +55,7 @@ class DocumentService:
         doc_id = str(uuid.uuid4())
         stored_filename = f"{doc_id}.pdf"
 
-        # Ensure storage directory exists
+        # Ensure physical storage directory exists
         storage_path = Path(settings.STORAGE_DIR)
         storage_path.mkdir(parents=True, exist_ok=True)
         file_dest = storage_path / stored_filename
@@ -63,13 +68,14 @@ class DocumentService:
             logger.error(f"Error writing document to disk: {err}", exc_info=True)
             raise UploadFailedException("Failed to write document to storage.")
 
-        # Persist metadata to database
+        # Persist metadata to database using a portable relative storage key/path
+        relative_file_path = f"storage/documents/{stored_filename}"
         try:
             document = Document(
                 id=doc_id,
                 original_filename=safe_original_filename,
                 stored_filename=stored_filename,
-                file_path=str(file_dest.resolve()),
+                file_path=relative_file_path,
                 mime_type=mime_type or "application/pdf",
                 file_size=len(content),
                 status="uploaded",
@@ -102,8 +108,8 @@ class DocumentService:
         """Delete a document record and its stored file."""
         document = self.get_document(document_id)
 
-        # Delete stored file from disk
-        file_path = Path(document.file_path)
+        # Delete stored physical file from disk
+        file_path = self.resolve_file_path(document)
         if file_path.exists():
             try:
                 file_path.unlink()
@@ -114,3 +120,4 @@ class DocumentService:
         # Delete database record
         self.repository.delete(document)
         logger.info(f"Deleted document record: id={document_id}")
+
