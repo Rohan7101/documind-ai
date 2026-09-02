@@ -61,3 +61,11 @@ class DocumentRepository:
         self.db.refresh(document)
         return document
 
+    def update_summary(self, document: Document, summary: str) -> Document:
+        """Store the AI-generated summary for a document."""
+        document.summary = summary
+        self.db.commit()
+        self.db.refresh(document)
+        return document
+
+

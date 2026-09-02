@@ -3,10 +3,12 @@ from pathlib import Path
 from typing import Optional
 from sqlalchemy.orm import Session
 
+from app.ai.service import AIService
 from app.core.config import settings
 from app.core.exceptions import (
     DocumentExtractionException,
     DocumentNotFoundException,
+    DocumentNotReadyForSummarizationException,
     FileTooLargeException,
     InvalidFileTypeException,
     InvalidPDFException,
@@ -21,16 +23,19 @@ PDF_MAGIC_BYTES = b"%PDF-"
 
 
 class DocumentService:
-    """Service orchestrating document validation, storage, extraction, and database persistence."""
+    """Service orchestrating document validation, storage, extraction, summarization, and persistence."""
 
     def __init__(
         self,
         db: Session,
         extraction_service: Optional[PDFExtractionService] = None,
+        ai_service: Optional[AIService] = None,
     ) -> None:
         self.db = db
         self.repository = DocumentRepository(db)
         self.extraction_service = extraction_service or PDFExtractionService()
+        self.ai_service = ai_service or AIService()
+
 
     def validate_file(self, filename: Optional[str], content: bytes) -> None:
         """Validate filename extension, file size, and magic bytes signature."""
@@ -153,5 +158,37 @@ class DocumentService:
             if isinstance(err, DocumentExtractionException):
                 raise err
             raise DocumentExtractionException("Unable to extract text from the document.")
+
+    async def summarize_document(self, document_id: str) -> Document:
+        """Generate an AI summary for a processed document and store it in SQLite.
+
+        Args:
+            document_id: The unique document identifier.
+
+        Returns:
+            The updated Document instance with summary populated.
+
+        Raises:
+            DocumentNotFoundException: If the document does not exist.
+            DocumentNotReadyForSummarizationException: If the document has no extracted text.
+            AISummarizationFailedException: If summary generation fails.
+        """
+        document = self.get_document(document_id)
+
+        if not document.extracted_text or not document.extracted_text.strip():
+            logger.warning(
+                f"Cannot summarize document id={document_id}: status='{document.status}', extracted_text is missing."
+            )
+            raise DocumentNotReadyForSummarizationException(
+                "Document has no extracted text to summarize. Please extract text first."
+            )
+
+        logger.info(f"Generating summary for document id={document_id} using configured AI provider.")
+        summary = await self.ai_service.summarize_text(document.extracted_text)
+
+        updated_doc = self.repository.update_summary(document, summary)
+        logger.info(f"Document id={document_id} summary successfully generated and stored.")
+        return updated_doc
+
 
 

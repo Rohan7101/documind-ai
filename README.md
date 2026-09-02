@@ -8,31 +8,32 @@ DocuMind AI is an intelligent document processing and question-answering platfor
 
 ## 📌 Project Status
 
-**Current Phase:** Phase 3 - PDF Text Extraction Engine
+**Current Phase:** Phase 4 — AI Provider Abstraction + Document Summarization
 
-The document ingestion and text extraction pipeline is implemented using PyMuPDF to extract, clean, and persist document text page-by-page in SQLite.
+The platform features a modular AI provider abstraction supporting offline deterministic mocking and live OpenAI integration, coupled with document text extraction and persistent summarization.
 
 ### ✅ Implemented Features:
 - **PDF Upload & Validation:** Enforces `.pdf` extension, MIME validation, file size limits (`MAX_UPLOAD_SIZE_MB`), and `%PDF-` binary signature check.
 - **Safe & Collision-Resistant Storage:** Portable relative storage paths (`storage/documents/<uuid>.pdf`) with physical resolution from configured `STORAGE_DIR`.
-- **SQLite Document Persistence:** Database records for document metadata and extracted text using SQLAlchemy 2.x.
-- **Page-by-Page PDF Text Extraction:** Dedicated `PDFExtractionService` powered by PyMuPDF extracting text strictly in document page order.
-- **Text Cleaning & Normalization:** Normalizes non-breaking spaces, zero-width characters, line breaks, and whitespace while preserving Unicode and multi-language content.
+- **SQLite Document Persistence:** Database records for document metadata, extracted text, and generated summaries using SQLAlchemy 2.x.
+- **Page-by-Page PDF Text Extraction:** Dedicated `PDFExtractionService` powered by PyMuPDF extracting text strictly in document page order with Unicode normalization.
+- **Provider-Independent AI Architecture:**
+  - `AIProvider` base interface decoupling application code from specific AI vendors.
+  - `MockAIProvider` for deterministic, offline testing without API keys or network latency.
+  - `OpenAIProvider` using `AsyncOpenAI` with structured anti-injection system prompts and robust error translation.
+  - `AIService` orchestrator enforcing text boundary limits (`AI_MAX_INPUT_CHARS`) and input validation.
+- **Document Summarization Endpoint:** `POST /api/documents/{id}/summarize` triggers AI summarization and persists the result in `Document.summary`.
 - **Status Lifecycle Management:** Tracks document state through `uploaded` ➔ `processing` ➔ `processed` (or `failed` on corrupted files).
-- **Graceful Edge Case Handling:**
-  - *Image-only / scanned PDFs:* Marked as `processed` with `extracted_text = null` (no false claims of OCR).
-  - *Corrupted PDFs:* Returns structured `DOCUMENT_EXTRACTION_FAILED` error (HTTP 400) and marks status `failed`.
-  - *Deterministic Re-extraction:* Safe re-extraction without data corruption.
 - **Service Health Monitoring:** `GET /health` service endpoint.
-- **Automated Test Suite:** 23 pytest test cases covering foundation, upload security, and extraction behaviors.
+- **Automated Test Suite:** 35 pytest test cases covering foundation, upload security, extraction behaviors, AI abstraction, and summarization workflows.
 
 ### ⏳ Planned (Future Milestones):
 - **OCR Engine:** Tesseract OCR for scanned / image-only documents.
-- **AI / LLM Integration:** Embeddings, vector indexing, document summarization, and interactive Q&A.
+- **RAG & Interactive Q&A:** Vector embeddings, chunking, semantic retrieval, and conversational document question-answering.
 - **Frontend:** Modern Web UI (HTML/CSS/JavaScript).
 
 > [!NOTE]
-> **Important:** OCR (Optical Character Recognition) and AI/LLM summarization/Q&A are not implemented in Phase 3 and are planned for subsequent milestones.
+> **Important:** Interactive Chat/Q&A, Vector Databases/Embeddings, and OCR are not implemented in Phase 4 and are planned for subsequent milestones.
 
 ---
 
@@ -42,6 +43,7 @@ The document ingestion and text extraction pipeline is implemented using PyMuPDF
 - **Framework:** [FastAPI](https://fastapi.tiangolo.com/)
 - **ASGI Server:** [Uvicorn](https://www.uvicorn.org/)
 - **PDF Engine:** [PyMuPDF](https://pymupdf.readthedocs.io/)
+- **AI / LLM Integration:** [OpenAI Python SDK](https://github.com/openai/openai-python)
 - **ORM / Database:** [SQLAlchemy 2.x](https://www.sqlalchemy.org/) with SQLite
 - **Validation & Settings:** [Pydantic v2](https://docs.pydantic.dev/) & [pydantic-settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/)
 - **Testing:** [pytest](https://docs.pytest.org/) & [HTTPX](https://www.python-httpx.org/)
@@ -57,12 +59,21 @@ documind-ai/
 │   ├── __init__.py
 │   ├── main.py                  # FastAPI application entrypoint & exception handlers
 │   │
+│   ├── ai/                      # Provider-independent AI layer
+│   │   ├── __init__.py
+│   │   ├── base.py              # Abstract AIProvider interface
+│   │   ├── service.py           # AIService orchestration & boundary enforcement
+│   │   └── providers/
+│   │       ├── __init__.py
+│   │       ├── mock.py          # Deterministic offline MockAIProvider
+│   │       └── openai_provider.py # OpenAI AsyncOpenAI provider
+│   │
 │   ├── api/                     # API routing and endpoint handlers
 │   │   ├── __init__.py
 │   │   └── routes/
 │   │       ├── __init__.py      # Router aggregator
 │   │       ├── health.py        # Health check endpoint (/health)
-│   │       └── documents.py     # Document & extraction endpoints (/api/documents)
+│   │       └── documents.py     # Document, extraction & summarization endpoints
 │   │
 │   ├── core/                    # Core configuration and infrastructure
 │   │   ├── __init__.py
@@ -81,7 +92,7 @@ documind-ai/
 │   │
 │   ├── services/                # Business logic layer
 │   │   ├── __init__.py
-│   │   ├── document_service.py  # Document upload, storage & lifecycle logic
+│   │   ├── document_service.py  # Document storage, lifecycle & summarization orchestration
 │   │   └── pdf_extraction_service.py # PyMuPDF text extraction engine
 │   │
 │   └── repositories/            # Data access layer
@@ -93,7 +104,8 @@ documind-ai/
 │   ├── conftest.py              # Pytest fixtures for isolated db & storage
 │   ├── test_health.py           # Health check endpoint tests
 │   ├── test_documents.py        # Document upload, validation & management tests
-│   └── test_pdf_extraction.py   # PDF text extraction & edge cases tests
+│   ├── test_pdf_extraction.py   # PDF text extraction & edge cases tests
+│   └── test_ai_summarization.py # AI provider & summarization tests
 │
 ├── storage/                     # Storage for document files
 │   ├── .gitkeep
@@ -108,7 +120,7 @@ documind-ai/
 │
 ├── .env.example                 # Example environment variables template
 ├── .gitignore                   # Git ignore patterns
-├── requirements.txt             # Python dependencies (includes PyMuPDF)
+├── requirements.txt             # Python dependencies
 ├── README.md                    # Project documentation
 └── LICENSE                      # MIT License
 ```
@@ -122,23 +134,34 @@ documind-ai/
 | `GET` | `/health` | Service health status | `200 OK` |
 | `POST` | `/api/documents/upload` | Upload & validate a PDF file | `201 Created` |
 | `GET` | `/api/documents` | List uploaded documents with pagination (`?skip=0&limit=20`) | `200 OK` |
-| `GET` | `/api/documents/{document_id}` | Retrieve document metadata & extracted text | `200 OK` |
+| `GET` | `/api/documents/{document_id}` | Retrieve document metadata, text & summary | `200 OK` |
 | `POST` | `/api/documents/{document_id}/extract` | Trigger PDF text extraction via PyMuPDF | `200 OK` |
+| `POST` | `/api/documents/{document_id}/summarize` | Generate & store AI summary of extracted text | `200 OK` |
 | `DELETE` | `/api/documents/{document_id}` | Delete document record and stored file | `200 OK` |
 | `GET` | `/docs` | Interactive Swagger API documentation | `200 OK` |
 
 ---
 
-## 🔄 Document Status Lifecycle
+## 🤖 AI Configuration
 
-```mermaid
-stateDiagram-v2
-    [*] --> uploaded : File Upload Validated & Saved
-    uploaded --> processing : POST /api/documents/{id}/extract
-    processing --> processed : Extraction Succeeded (Text Saved)
-    processing --> failed : Extraction Failed / Corrupted PDF
-    processed --> processing : Re-extraction Triggered
-    failed --> processing : Retry Extraction
+The application supports multiple AI providers configurable via environment variables:
+
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `AI_PROVIDER` | `mock` | Selected provider: `mock` (offline, zero-config) or `openai` |
+| `OPENAI_API_KEY` | *(None)* | OpenAI API Secret Key (required only when `AI_PROVIDER=openai`) |
+| `OPENAI_MODEL` | `gpt-4o-mini` | OpenAI model identifier |
+| `AI_MAX_INPUT_CHARS` | `100000` | Maximum character limit for text sent to the AI provider |
+
+### Running with Mock AI (Default)
+In `mock` mode (default for development and automated testing), no API key or internet access is needed. The application returns realistic, deterministic summaries.
+
+### Running with OpenAI
+To enable OpenAI summarization in production:
+```bash
+AI_PROVIDER=openai
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4o-mini
 ```
 
 ---
@@ -204,8 +227,8 @@ pytest -v
 
 ## 🔒 Security Note
 
-- **Path Traversal Protection:** Uploaded files are stored with unique UUID filenames and never use client-provided filenames on the local filesystem.
-- **Magic Bytes Validation:** Uploaded PDFs are validated for the `%PDF-` signature to prevent executable or script files masquerading as PDFs.
+- **Untrusted Input Protection:** Document text is treated strictly as data within bounded XML tags in system prompts to prevent prompt injection overrides.
+- **Zero Privacy Leakage in Logs:** Document text, full prompts, generated summaries, and API keys are strictly excluded from application logs.
 - **Zero Secrets in Git:** Sensitive credentials and local databases (`*.db`, `*.sqlite`) are ignored by `.gitignore`.
 
 ---

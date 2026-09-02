@@ -92,6 +92,22 @@ def extract_document_text(
     return DocumentResponse.model_validate(document)
 
 
+@router.post(
+    "/{document_id}/summarize",
+    response_model=DocumentResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Summarize document",
+    description="Generates an AI summary from the extracted document text and stores it in SQLite.",
+)
+async def summarize_document(
+    document_id: str,
+    service: DocumentService = Depends(get_document_service),
+) -> DocumentResponse:
+    """Trigger AI summarization for an extracted document."""
+    document = await service.summarize_document(document_id)
+    return DocumentResponse.model_validate(document)
+
+
 @router.delete(
     "/{document_id}",
     response_model=DocumentDeleteResponse,
@@ -109,4 +125,5 @@ def delete_document(
         message="Document deleted successfully",
         id=document_id,
     )
+
 
